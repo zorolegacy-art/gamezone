@@ -1,157 +1,276 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-app = FastAPI(title="GameZone API")
+
+# ==========================================
+# APP
+# ==========================================
+
+app = FastAPI(
+    title="GameZone API",
+    description="Backend API for the GameZone gaming platform",
+    version="1.0.0",
+)
 
 
-# Allow React frontend to communicate with FastAPI
+# ==========================================
+# CORS
+# ==========================================
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# -------------------------
-# GAME DATA
-# -------------------------
+# ==========================================
+# TEMPORARY IN-MEMORY DATA
+# No database required
+# ==========================================
+
+player = {
+    "username": "GameMaster",
+    "level": 12,
+    "xp": 2450,
+    "games_played": 24,
+    "wins": 18,
+}
+
 
 games = [
     {
         "id": 1,
         "name": "Snake",
+        "description": "Classic Snake game. Eat food, grow longer and beat your high score.",
         "category": "Arcade",
-        "description": "Classic Snake game",
         "icon": "🐍",
     },
     {
         "id": 2,
         "name": "Tic-Tac-Toe",
+        "description": "Battle the computer in the classic 3x3 strategy game.",
         "category": "Strategy",
-        "description": "Classic 3x3 battle",
-        "icon": "⭕",
+        "icon": "❌",
     },
     {
         "id": 3,
         "name": "Memory Match",
+        "description": "Find all matching pairs using as few moves as possible.",
         "category": "Puzzle",
-        "description": "Find matching pairs",
         "icon": "🧠",
     },
 ]
 
 
-# -------------------------
-# PLAYER DATA
-# -------------------------
-
-player = {
-    "username": "GameMaster",
-    "level": 12,
-    "xp": 8450,
-    "games_played": 127,
-    "wins": 84,
-    "achievements": [
-        "First Victory",
-        "Snake Master",
-        "100 Games",
-        "High Scorer",
-    ],
-}
-
-
-# -------------------------
-# LEADERBOARD DATA
-# -------------------------
-
 leaderboard = [
     {
         "rank": 1,
-        "username": "ShadowX",
-        "level": 42,
-        "score": 98250,
+        "username": "Shadow",
+        "level": 28,
+        "game": "Snake",
+        "score": 9850,
     },
     {
         "rank": 2,
-        "username": "DragonSlayer",
-        "level": 38,
-        "score": 87400,
+        "username": "PixelMaster",
+        "level": 24,
+        "game": "Memory Match",
+        "score": 8720,
     },
     {
         "rank": 3,
         "username": "GameMaster",
         "level": 12,
-        "score": 84500,
+        "game": "Snake",
+        "score": 7450,
     },
     {
         "rank": 4,
-        "username": "NightWolf",
-        "level": 31,
-        "score": 76900,
+        "username": "CyberNinja",
+        "level": 19,
+        "game": "Tic-Tac-Toe",
+        "score": 6210,
     },
     {
         "rank": 5,
-        "username": "CyberGhost",
-        "level": 27,
-        "score": 71200,
+        "username": "Dragon",
+        "level": 17,
+        "game": "Memory Match",
+        "score": 5580,
     },
 ]
 
 
-# -------------------------
-# HOME API
-# -------------------------
+# ==========================================
+# REQUEST MODELS
+# ==========================================
+
+class ScoreSubmission(BaseModel):
+    username: str
+    game: str
+    score: int
+
+
+# ==========================================
+# ROOT
+# ==========================================
 
 @app.get("/")
 def root():
     return {
-        "message": "GameZone API is running!"
+        "message": "🎮 GameZone API is running!",
+        "status": "online",
+        "version": "1.0.0",
     }
 
 
-# -------------------------
-# ALL GAMES
-# -------------------------
+# ==========================================
+# HEALTH CHECK
+# ==========================================
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+    }
+
+
+# ==========================================
+# PLAYER
+# ==========================================
+
+@app.get("/api/player")
+def get_player():
+    return player
+
+
+# ==========================================
+# GAMES
+# ==========================================
 
 @app.get("/api/games")
 def get_games():
     return games
 
 
-# -------------------------
-# SINGLE GAME
-# -------------------------
-
 @app.get("/api/games/{game_id}")
 def get_game(game_id: int):
 
     for game in games:
+
         if game["id"] == game_id:
             return game
 
     return {
-        "error": "Game not found"
+        "error": "Game not found",
     }
 
 
-# -------------------------
+# ==========================================
 # LEADERBOARD
-# -------------------------
+# ==========================================
 
 @app.get("/api/leaderboard")
 def get_leaderboard():
     return leaderboard
 
 
-# -------------------------
-# PLAYER PROFILE
-# -------------------------
+# ==========================================
+# SUBMIT SCORE
+# ==========================================
 
-@app.get("/api/player")
-def get_player():
-    return player
+@app.post("/api/scores")
+def submit_score(submission: ScoreSubmission):
+
+    new_score = {
+        "rank": 0,
+        "username": submission.username,
+        "level": player["level"],
+        "game": submission.game,
+        "score": submission.score,
+    }
+
+    leaderboard.append(new_score)
+
+    # Highest scores first
+    leaderboard.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    # Keep top 10
+    del leaderboard[10:]
+
+    # Recalculate ranks
+    for index, item in enumerate(leaderboard):
+        item["rank"] = index + 1
+
+    # Update current player
+    if submission.username == player["username"]:
+
+        player["games_played"] += 1
+
+        player["xp"] += submission.score
+
+    return {
+        "message": "Score submitted successfully",
+        "score": submission.score,
+        "game": submission.game,
+        "leaderboard": leaderboard,
+    }
+
+
+# ==========================================
+# RESET DATA
+# ==========================================
+
+@app.post("/api/reset")
+def reset_data():
+
+    global leaderboard
+
+    leaderboard = [
+        {
+            "rank": 1,
+            "username": "Shadow",
+            "level": 28,
+            "game": "Snake",
+            "score": 9850,
+        },
+        {
+            "rank": 2,
+            "username": "PixelMaster",
+            "level": 24,
+            "game": "Memory Match",
+            "score": 8720,
+        },
+        {
+            "rank": 3,
+            "username": "GameMaster",
+            "level": 12,
+            "game": "Snake",
+            "score": 7450,
+        },
+        {
+            "rank": 4,
+            "username": "CyberNinja",
+            "level": 19,
+            "game": "Tic-Tac-Toe",
+            "score": 6210,
+        },
+        {
+            "rank": 5,
+            "username": "Dragon",
+            "level": 17,
+            "game": "Memory Match",
+            "score": 5580,
+        },
+    ]
+
+    return {
+        "message": "GameZone data reset successfully",
+    }
